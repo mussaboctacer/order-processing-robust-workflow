@@ -1,0 +1,527 @@
+{
+  "name": "Order Processing - Robust with Error Alerting & Retries(full and fianl)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "/process-order",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -800,
+        48
+      ],
+      "id": "f473094e-a629-4927-a464-502cef83a2bc",
+      "name": "Webhook: Order Received",
+      "webhookId": "ae505ab1-e97e-46b7-bbfa-dbf140c4eebc"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assign-1",
+              "name": "orderId",
+              "value": "={{ $json.body.orderId }}",
+              "type": "string"
+            },
+            {
+              "id": "assign-2",
+              "name": "amount",
+              "value": "={{ $json.body.amount }}",
+              "type": "number"
+            },
+            {
+              "id": "assign-3",
+              "name": "items",
+              "value": "={{ $json.body.items }}",
+              "type": "array"
+            },
+            {
+              "id": "assign-4",
+              "name": "customerId",
+              "value": "={{ $json.body.customerId }}",
+              "type": "string"
+            },
+            {
+              "id": "assign-5",
+              "name": "timestamp",
+              "value": "={{ $now.toISOString() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        -576,
+        48
+      ],
+      "id": "c6003580-727e-45d2-a922-7361cd27d1cf",
+      "name": "Set: Extract Order Data"
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\nconst { orderId, amount, timestamp } = $json;\n\nconst idempotencyString = `${orderId}:${amount}:${timestamp}`;\nconst idempotencyKey = crypto.createHash('sha256').update(idempotencyString).digest('hex');\n\nreturn {\n  ...{\n    orderId: $json.orderId,\n    amount: $json.amount,\n    items: $json.items,\n    customerId: $json.customerId,\n    timestamp: $json.timestamp\n  },\n  idempotencyKey: idempotencyKey,\n  retryCount: 0,\n  paymentStatus: 'pending',\n  inventoryStatus: 'pending'\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -352,
+        48
+      ],
+      "id": "8be4fbf0-6012-4ea1-ba29-9418c5c3466b",
+      "name": "Code: Generate Idempotency Key (SHA-256)"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.idempotencyKey }}",
+              "operation": "notContains",
+              "value2": "null"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        -128,
+        48
+      ],
+      "id": "bc739697-20a9-4ded-97f1-89d45fccaac1",
+      "name": "IF: Check Duplicate (Idempotency)"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://https-payment-random-beeceptor-com.free.beeceptor.com ",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "amount",
+              "value": "={{ $json.amount }}"
+            },
+            {
+              "name": "orderId",
+              "value": "={{ $json.orderId }}"
+            },
+            {
+              "name": "idempotencyKey",
+              "value": "={{ $json.idempotencyKey }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {}
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        96,
+        240
+      ],
+      "id": "320655fe-1c01-45fe-896c-3debf78686e0",
+      "name": "HTTP Request: Payment Gateway (with Retry)"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -128,
+        288
+      ],
+      "id": "6e520468-368d-4c45-98ff-0ff5ddf95e9f",
+      "name": "Wait: Retry Delay (Payment)",
+      "webhookId": "f4ac7b1d-850a-400b-99d0-0f8542ea5a7c"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.retryCount }}",
+              "operation": "lessThan",
+              "value2": 3
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        -352,
+        384
+      ],
+      "id": "29f1d8ed-1a98-451f-af80-b55fb6affa4a",
+      "name": "IF: Retry Count < 3 (Payment)"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://https-payment-random-beeceptor-com.free.beeceptor.com ",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "items",
+              "value": "={{ $json.items }}"
+            },
+            {
+              "name": "orderId",
+              "value": "={{ $json.orderId }}"
+            },
+            {
+              "name": "idempotencyKey",
+              "value": "={{ $json.idempotencyKey }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {}
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        320,
+        240
+      ],
+      "id": "429eff06-fd39-4ddb-8249-040f2ef4a6bd",
+      "name": "HTTP Request: Inventory Management"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assign-1",
+              "name": "status",
+              "value": "={{ \"success\" }}",
+              "type": "string"
+            },
+            {
+              "id": "assign-2",
+              "name": "message",
+              "value": "={{ \"Order processed successfully\" }}",
+              "type": "string"
+            },
+            {
+              "id": "assign-3",
+              "name": "orderId",
+              "value": "={{ $json.orderId }}",
+              "type": "string"
+            },
+            {
+              "id": "assign-4",
+              "name": "idempotencyKey",
+              "value": "={{ $json.idempotencyKey }}",
+              "type": "string"
+            },
+            {
+              "id": "assign-5",
+              "name": "paymentStatus",
+              "value": "={{ \"completed\" }}",
+              "type": "string"
+            },
+            {
+              "id": "assign-6",
+              "name": "inventoryStatus",
+              "value": "={{ \"updated\" }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        544,
+        240
+      ],
+      "id": "d0e31d75-89b2-4ec3-9e37-9b4a53967442",
+      "name": "Set: Build Success Response"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        768,
+        240
+      ],
+      "id": "e26b6e89-4c11-402b-95b8-a6db37712267",
+      "name": "Webhook Response: Success (200)"
+    },
+    {
+      "parameters": {
+        "jsCode": "return {\n  status: 'error',\n  message: 'Order could not be processed at this time. Please try later.',\n  orderId: $json.orderId || 'unknown',\n  error: $json.error?.message || $json.message || 'Unknown error',\n  statusCode: $json.statusCode || 500,\n  timestamp: new Date().toISOString()\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -128,
+        480
+      ],
+      "id": "915e143c-ba70-4d8f-9f65-795982edd6eb",
+      "name": "Code: Build Fallback Response"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{{ $json | json }}",
+        "options": {
+          "responseCode": 500
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        96,
+        480
+      ],
+      "id": "3def2dd5-b5be-437f-b614-e49790dcf19d",
+      "name": "Webhook Response: Error (500)"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assign-1",
+              "name": "status",
+              "value": "={{ \"success\" }}",
+              "type": "string"
+            },
+            {
+              "id": "assign-2",
+              "name": "message",
+              "value": "={{ \"Order already processed\" }}",
+              "type": "string"
+            },
+            {
+              "id": "assign-3",
+              "name": "orderId",
+              "value": "={{ $json.orderId }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        96,
+        0
+      ],
+      "id": "c7aa03cd-1bc7-472b-915b-8427d4c64025",
+      "name": "Set: Duplicate Response"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{{ $json | json }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        320,
+        0
+      ],
+      "id": "406c05ea-bfbc-4be3-93ef-5cfcdf6aa8e6",
+      "name": "Webhook Response: Duplicate (200)"
+    }
+  ],
+  "pinData": {
+    "Webhook: Order Received": [
+      {
+        "json": {
+          "body": {
+            "orderId": "ORD-12345",
+            "amount": 99.99,
+            "customerId": "CUST-456",
+            "items": [
+              {
+                "productId": "PROD-789",
+                "quantity": 2,
+                "price": 49.99
+              }
+            ]
+          },
+          "headers": {
+            "content-type": "application/json"
+          },
+          "query": {}
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Webhook: Order Received": {
+      "main": [
+        [
+          {
+            "node": "Set: Extract Order Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set: Extract Order Data": {
+      "main": [
+        [
+          {
+            "node": "Code: Generate Idempotency Key (SHA-256)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Generate Idempotency Key (SHA-256)": {
+      "main": [
+        [
+          {
+            "node": "IF: Check Duplicate (Idempotency)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: Check Duplicate (Idempotency)": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request: Payment Gateway (with Retry)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set: Duplicate Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request: Payment Gateway (with Retry)": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request: Inventory Management",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request: Inventory Management": {
+      "main": [
+        [
+          {
+            "node": "Set: Build Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set: Build Success Response": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response: Success (200)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: Retry Count < 3 (Payment)": {
+      "main": [
+        [
+          {
+            "node": "Wait: Retry Delay (Payment)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code: Build Fallback Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait: Retry Delay (Payment)": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request: Payment Gateway (with Retry)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Build Fallback Response": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response: Error (500)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set: Duplicate Response": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response: Duplicate (200)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "70b8d1e5-dc02-4fa0-9fc6-6979b8a4d768",
+  "meta": {
+    "instanceId": "a8385e563e5c693c65213c0e9ef5f736ebb5ea263f9cb095dbc5a19e2c828398"
+  },
+  "nodeGroups": [],
+  "id": "SrCSIKyGNRBcFe0v",
+  "tags": []
+}
